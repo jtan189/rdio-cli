@@ -139,6 +139,33 @@ class Rdio(Termtool):
         for trackkey in progress(tracks):
             rdio.addToPlaylist(playlist=args.playlist, tracks=trackkey)
 
+    @subcommand(help='remove items from a playlist')
+    @argument('playlist', help='ID of playlist to add to')
+    @argument('key', nargs='+', help='key of thing (song or album) to remove from playlist')
+    @authd
+    def remove(self, rdio, args):
+        tracks_to_remove = list()
+
+        logging.info('Identifying those items')
+        progress = self.progressbar()
+        for key in progress(args.key):
+            if key.startswith('t'):
+                tracks_to_remove.append(key)
+            elif key.startswith('a'):
+                albums = rdio.get(keys=key, extras='trackKeys')
+                album = albums[key]
+                tracks_to_remove.extend(album['trackKeys'])
+
+        logging.info('Removing items from playlist')
+        playlist_trackkeys = rdio.get(keys=args.playlist, extras='trackKeys')[args.playlist]['trackKeys']
+
+        for trackkey in tracks_to_remove:
+            if trackkey in playlist_trackkeys:
+                trackindex = playlist_trackkeys.index(trackkey)
+                rdio.removeFromPlaylist(playlist=args.playlist, tracks=trackkey, index=trackindex, count=1)
+                playlist_trackkeys.remove(trackkey)
+
+
     @subcommand(help='list your playlists')
     @authd
     def playlists(self, rdio, args):
@@ -170,9 +197,26 @@ class Rdio(Termtool):
             table.add_row([i, track['name'], track['artist'], track['album'], duration, track['key']])
         print(table)
 
+    def print_albums_in_thing(self, rdio, thing):
+        tracks = thing['tracks']
+        albumkeys = set([track['albumKey'] for track in tracks])
+        albumdata = rdio.get(keys=','.join(albumkeys))
+        albums = [albumdata[albumkey] for albumkey in albumkeys]
+
+        cols = ['#', 'Artist', 'Album', 'Key']
+        table = self.table(cols)
+        table.align = 'l'
+        table.align['#'] = 'r'
+        for i, album in enumerate(albums, 1):
+            table.add_row([i, album['artist'], album['name'], album['key']])
+        print(table)
+
     def show_playlist(self, rdio, playlist, args):
         print "%(name)s\n%(owner)s\n%(shortUrl)s\n" % playlist
-        self.print_tracks_in_thing(rdio, playlist)
+        if args.group_by == "album":
+            self.print_albums_in_thing(rdio, playlist)
+        else:
+            self.print_tracks_in_thing(rdio, playlist)
 
     def show_artist(self, rdio, artist, args):
         print "%(name)s\n%(length)d songs on %(albumCount)d albums\n%(shortUrl)s\n" % artist
@@ -207,9 +251,14 @@ class Rdio(Termtool):
 
     @subcommand(help='show a playlist, artist, album or track')
     @argument('key', help='the key of the thing to show')
+    @argument('--group-by', '-g',
+          dest='group_by',
+          choices=['track', 'album'],
+          default='album',
+          help="group results by track or album")
     @authd
     def show(self, rdio, args):
-        things = rdio.get(keys=args.key, extras='trackKeys,albumCount')
+        things = rdio.get(keys=args.key, extras='trackKeys,albumCount,tracks')
         thing = things[args.key]
 
         show_funcs = {
