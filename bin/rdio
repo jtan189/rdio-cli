@@ -392,11 +392,10 @@ class Rdio(Termtool):
         albums = sorted(albums, key=lambda a: a['hits'], reverse=True)
         albums = islice(albums, args.count)
 
-        cols = ['Hits', 'Artist', 'Album', 'Friends', 'Key']
+        cols = ['Artist', 'Album', 'Key']
         table = self.table(cols)
         for album in albums:
-            friends = u', '.join(u['firstName'] for u in album['users'])
-            table.add_row([album['hits'], album['artist'], album['name'], friends, album['key']])
+            table.add_row([album['artist'], album['name'], album['key']])
         print(table)
 
     def echonest_query(self, path, query, args):
